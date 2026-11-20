@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Memory pool for devices that may only access a restricted part of memory.
+
+  Devices that reference the node through a memory-region property have
+  their device-accessible data (for VirtIO: the virtqueues and bounce
+  copies of the driver buffers) allocated from this region and never
+  access any other memory. This is needed for devices implemented by
+  another virtual machine, which only maps the memory shared with it.
+  Several devices may reference the same pool, which is then shared
+  between them.
+
+  The compatible, the placement under /reserved-memory and the
+  memory-region reference follow the Linux binding of the same name.
+
+  The node must also be a zephyr,memory-region so that the linker keeps
+  the rest of the image out of it, and it must not overlap the RAM the
+  kernel manages. The pool is handed to the device by its own address, so
+  it must be identity mapped. That is the case without an MMU, and on
+  AArch64, which maps zephyr,memory-region nodes flat when they carry a
+  zephyr,memory-attr property; other architectures with an MMU are not
+  supported. The pool is accessed through the cache like any other memory,
+  so the device must be cache coherent with the CPU.
+
+  Example:
+
+    reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        virtio_shm: restricted-dma-pool@d0000000 {
+            compatible = "restricted-dma-pool", "zephyr,memory-region";
+            reg = <0xd0000000 DT_SIZE_K(64)>;
+            zephyr,memory-region = "VIRTIO_SHM";
+        };
+    };
+
+    virtio_mmio0: virtio_mmio@a003e00 {
+        compatible = "virtio,mmio";
+        memory-region = <&virtio_shm>;
+        ...
+    };
+
+compatible: "restricted-dma-pool"
+
+include: "zephyr,memory-common.yaml"
+
+properties:
+  zephyr,memory-region:
+    required: true

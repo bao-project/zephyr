@@ -147,6 +147,21 @@ struct virtq_receive_callback_entry {
 };
 
 /**
+ * @brief memory pool shared with a virtio device
+ *
+ * The memory a device is confined to, described by a restricted-dma-pool
+ * devicetree node. Defined by the virtio driver, opaque to its users.
+ */
+struct virtq_pool;
+
+/**
+ * @brief driver-private information about a descriptor
+ *
+ * Defined by the virtio driver, opaque to its users.
+ */
+struct virtq_desc_info;
+
+/**
  * @brief virtqueue
  *
  * contains structures required for virtqueue operation
@@ -197,17 +212,54 @@ struct virtq {
 	 * array with callbacks invoked after receiving buffers back from the device
 	 */
 	struct virtq_receive_callback_entry *recv_cbs;
-};
 
+	/**
+	 * driver-private information about each descriptor
+	 */
+	struct virtq_desc_info *desc_info;
+	/**
+	 * memory pool shared with the device the rings are allocated from and the
+	 * buffers are bounced through, NULL when the device can access all memory
+	 */
+	struct virtq_pool *pool;
+	/**
+	 * size of the memory shared with the device (descriptor table and rings),
+	 * kept so that virtq_free() can return it to the pool
+	 */
+	size_t shared_size;
+};
 
 /**
  * @brief creates virtqueue
  *
  * @param v virtqueue to be created
  * @param size size of the virtqueue
- * @return 0 or error code on failure
+ * @retval 0 Success
+ * @retval -EINVAL Invalid size
+ * @retval -ENOMEM Out of memory
  */
 int virtq_create(struct virtq *v, size_t size);
+
+/**
+ * @brief creates virtqueue in a memory pool shared with the device
+ *
+ * The descriptor table and the rings are allocated from the pool, while the
+ * driver-private state is kept in regular memory. Buffers added to the
+ * virtqueue are bounced through the pool, so the device only ever accesses
+ * the pool: device-readable buffers are copied into it when the chain is
+ * added, device-writable ones are copied back from it when the device
+ * returns the chain. Room in the pool is never waited for: when the pool has
+ * no room for a buffer, virtq_add_buffer_chain() fails at once, whatever its
+ * timeout.
+ *
+ * @param v virtqueue to be created
+ * @param size size of the virtqueue
+ * @param pool memory pool shared with the device, NULL behaves like virtq_create()
+ * @retval 0 Success
+ * @retval -EINVAL Invalid size
+ * @retval -ENOMEM Not enough memory in the pool or on the heap
+ */
+int virtq_create_in_pool(struct virtq *v, size_t size, struct virtq_pool *pool);
 
 /**
  * @brief frees virtqueue
@@ -246,7 +298,9 @@ struct virtq_buf {
  * @param cb_opaque opaque value that will be passed to the cb
  * @param timeout amount of time it will wait for free descriptors, with K_NO_WAIT it
  * can be called from isr
- * @return 0 or error code on failure
+ * @return 0 or error code on failure. For a virtqueue in a restricted DMA pool, -EBUSY
+ * when the pool has no room for a buffer at the moment and -ENOMEM when a buffer is
+ * larger than the whole pool, both at once and whatever the timeout.
  */
 int virtq_add_buffer_chain(
 	struct virtq *v, struct virtq_buf *bufs, uint16_t bufs_size,

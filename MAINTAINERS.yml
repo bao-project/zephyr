@@ -3086,6 +3086,7 @@ Documentation Infrastructure:
     - include/zephyr/drivers/virtio.h
     - include/zephyr/drivers/virtio/
     - tests/drivers/build_all/virtio/
+    - tests/drivers/virtio/
   labels:
     - "area: VIRTIO"
   tests:

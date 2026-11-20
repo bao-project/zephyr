@@ -1,0 +1,30 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <mem.h>
+#include <zephyr/dt-bindings/memory-attr/memory-attr.h>
+
+/*
+ * Take the last 64 KiB of RAM away from the kernel and make them the pool. The
+ * sizes repeat those of sram0 in boards/qemu/cortex_a53/qemu_cortex_a53.dts: if
+ * the board's RAM grows, the overlap check in the virtio driver fails the build;
+ * if it shrinks, the pool lies outside the RAM QEMU provides and the test faults.
+ */
+&sram0 {
+	reg = <0x0 0x40000000 0x0 (DT_SIZE_M(128) - DT_SIZE_K(64))>;
+};
+
+/ {
+	reserved-memory {
+		/* zephyr,memory-attr is what gets the region mapped by the AArch64 MMU */
+		test_pool: restricted-dma-pool@47ff0000 {
+			compatible = "restricted-dma-pool", "zephyr,memory-region";
+			reg = <0x0 0x47ff0000 0x0 DT_SIZE_K(64)>;
+			zephyr,memory-region = "TEST_POOL";
+			zephyr,memory-attr = <DT_MEM_CACHEABLE>;
+		};
+	};
+};

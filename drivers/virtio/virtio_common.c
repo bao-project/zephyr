@@ -49,6 +49,8 @@ void virtio_isr(const struct device *dev, uint8_t isr_status, uint16_t virtqueue
 
 				uint16_t next = chain_head;
 				bool last = false;
+				/* what the device wrote and was not given back to the driver yet */
+				uint32_t unmapped_len = used_len;
 
 				/*
 				 * We are done processing the descriptor chain, and
@@ -63,6 +65,8 @@ void virtio_isr(const struct device *dev, uint8_t isr_status, uint16_t virtqueue
 					next = sys_le16_to_cpu(vq->desc[curr].next);
 					last = (sys_le16_to_cpu(vq->desc[curr].flags) &
 						VIRTQ_DESC_F_NEXT) == 0U;
+					/* with a restricted DMA pool, copies the buffer back */
+					virtq_dma_unmap_buf(vq, curr, &unmapped_len);
 					virtq_add_free_desc(vq, curr);
 				}
 

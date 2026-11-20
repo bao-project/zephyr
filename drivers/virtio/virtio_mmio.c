@@ -34,6 +34,9 @@ struct virtio_mmio_data {
 	struct virtq *virtqueues;
 	uint16_t virtqueue_count;
 
+	/* pool the device is confined to (its memory-region property), or NULL */
+	struct virtq_pool *pool;
+
 	/* shadow of the write-only DRIVER_FEATURES register */
 	uint32_t driver_features[VIRTIO_MMIO_FEATURE_WORDS];
 
@@ -64,9 +67,9 @@ static inline void virtio_mmio_write32(const struct device *dev, uint32_t offset
 }
 
 static void virtio_mmio_write_addr64(const struct device *dev, uint32_t offset_low,
-				     uint32_t offset_high, void *addr)
+				     uint32_t offset_high, const struct virtq *vq, void *addr)
 {
-	uintptr_t phys_addr = k_mem_phys_addr(addr);
+	uintptr_t phys_addr = virtq_dev_addr(vq, addr);
 
 	virtio_mmio_write32(dev, offset_low, phys_addr & UINT32_MAX);
 #ifdef CONFIG_64BIT
@@ -207,11 +210,11 @@ static int virtio_mmio_set_virtqueue(const struct device *dev, uint16_t virtqueu
 
 	virtio_mmio_write32(dev, VIRTIO_MMIO_QUEUE_SIZE, virtqueue->num);
 	virtio_mmio_write_addr64(dev, VIRTIO_MMIO_QUEUE_DESC_LOW, VIRTIO_MMIO_QUEUE_DESC_HIGH,
-				 virtqueue->desc);
+				 virtqueue, virtqueue->desc);
 	virtio_mmio_write_addr64(dev, VIRTIO_MMIO_QUEUE_AVAIL_LOW, VIRTIO_MMIO_QUEUE_AVAIL_HIGH,
-				 virtqueue->avail);
+				 virtqueue, virtqueue->avail);
 	virtio_mmio_write_addr64(dev, VIRTIO_MMIO_QUEUE_USED_LOW, VIRTIO_MMIO_QUEUE_USED_HIGH,
-				 virtqueue->used);
+				 virtqueue, virtqueue->used);
 
 	virtio_mmio_write32(dev, VIRTIO_MMIO_QUEUE_READY, 1);
 
@@ -240,7 +243,7 @@ static int virtio_mmio_set_virtqueues(const struct device *dev, uint16_t queue_c
 		const uint16_t queue_size =
 			cb(i, virtio_mmio_read32(dev, VIRTIO_MMIO_QUEUE_SIZE_MAX), opaque);
 
-		ret = virtq_create(&data->virtqueues[i], queue_size);
+		ret = virtq_create_in_pool(&data->virtqueues[i], queue_size, data->pool);
 		if (ret != 0) {
 			goto fail;
 		}
@@ -328,8 +331,34 @@ static int virtio_mmio_init_common(const struct device *dev)
 	return 0;
 };
 
+/*
+ * When the devicetree node references a restricted-dma-pool through
+ * memory-region, every access by the device goes to that pool: the virtqueues
+ * are allocated from it and the driver buffers are bounced through it. This is
+ * what makes the device usable when it is implemented by another VM that only
+ * maps the memory shared with it. Several devices may share one pool.
+ */
+#define VIRTIO_MMIO_HAS_POOL(inst) DT_INST_NODE_HAS_PROP(inst, memory_region)
+
+#define VIRTIO_MMIO_POOL_CHECK(inst)                                                               \
+	IF_ENABLED(VIRTIO_MMIO_HAS_POOL(inst),                                                     \
+		   (BUILD_ASSERT(IS_ENABLED(CONFIG_VIRTIO_RESTRICTED_DMA_POOL),                    \
+				 "a virtio,mmio node with a memory-region needs "                  \
+				 "CONFIG_VIRTIO_RESTRICTED_DMA_POOL");                             \
+		    BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_INST_PHANDLE(inst, memory_region),          \
+						    restricted_dma_pool),                          \
+				 "the memory-region of a virtio,mmio node must be a "              \
+				 "restricted-dma-pool");                                           \
+		    BUILD_ASSERT(DT_NODE_HAS_STATUS_OKAY(DT_INST_PHANDLE(inst, memory_region)),    \
+				 "the memory-region of a virtio,mmio node must be enabled");))
+
+#define VIRTIO_MMIO_POOL_INIT(inst)                                                                \
+	.pool = COND_CODE_1(VIRTIO_MMIO_HAS_POOL(inst),                                            \
+			    (VIRTQ_POOL_DT_GET_BY_MEMORY_REGION(DT_DRV_INST(inst))), (NULL)),
+
 #define VIRTIO_MMIO_DEFINE(inst)                                                                   \
-	static struct virtio_mmio_data virtio_mmio_data##inst;                                     \
+	VIRTIO_MMIO_POOL_CHECK(inst)                                                               \
+	static struct virtio_mmio_data virtio_mmio_data##inst = {VIRTIO_MMIO_POOL_INIT(inst)};     \
 	static struct virtio_mmio_config virtio_mmio_config##inst = {                              \
 		DEVICE_MMIO_NAMED_ROM_INIT(reg_base, DT_DRV_INST(inst)),                           \
 	};                                                                                         \

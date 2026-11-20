@@ -27,6 +27,38 @@ config VIRTIO_MMIO
 	help
 	  Enable options for VIRTIO over MMIO
 
+config VIRTIO_RESTRICTED_DMA_POOL
+	bool "Confine devices to restricted DMA pools"
+	depends on DT_HAS_RESTRICTED_DMA_POOL_ENABLED
+	default y
+	select SYS_MEM_BLOCKS
+	help
+	  When the devicetree node of a VIRTIO transport references a
+	  restricted-dma-pool node through its memory-region property,
+	  allocate its virtqueues from that pool and bounce the buffers added
+	  to them through it, so that the device never accesses any other
+	  memory. This is needed when the device is implemented by another
+	  virtual machine that can only access the memory shared with it. One
+	  pool is created per restricted-dma-pool node and is shared by the
+	  devices that reference it. Transports without the property keep
+	  using the system heap and hand the driver buffers to the device
+	  directly.
+
+	  Every transfer costs a copy, and the copy of the data the device
+	  returns runs in the transport's interrupt handler. The pool is
+	  accessed through the cache like any other memory: the device must be
+	  cache coherent with the CPU.
+
+config VIRTIO_RESTRICTED_DMA_POOL_BLOCK_SIZE
+	int "Allocation granularity of restricted DMA pools"
+	depends on VIRTIO_RESTRICTED_DMA_POOL
+	range 16 65536
+	default 64
+	help
+	  Size in bytes of the blocks a restricted DMA pool is allocated in.
+	  Must be a power of two of at least 16 bytes (the alignment required
+	  by the descriptor table).
+
 config HEAP_MEM_POOL_ADD_SIZE_VIRTIO
 	int "Heap memory pool size for VIRTIO"
 	default 32768

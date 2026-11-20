@@ -125,6 +125,33 @@ virtqueue has to be acquired using :c:func:`virtio_get_virtqueue`. To send data 
 will be invoked once the device returns the given descriptor chain. After that, the virtqueue has to be notified using
 :c:func:`virtio_notify_virtqueue` from the Virtio API.
 
+Restricted DMA pools
+====================
+A restricted DMA pool is a memory region a VirtIO device is confined to. It is declared as a
+:dtcompatible:`restricted-dma-pool` and referenced by the ``memory-region`` property of the
+transport node. The transport allocates its virtqueues from the pool and bounces the buffers added
+to them through it, so the device never accesses any other memory. Several transports may
+reference the same pool.
+
+By default the descriptors carry the physical addresses of the driver's buffers and the device
+accesses them directly, which requires the device to reach all of the guest's memory. A pool is
+needed when it cannot: when the device is implemented by another virtual machine, for example by a
+hypervisor that forwards the transport's registers to a backend VM, it can only access the memory
+explicitly shared with it.
+
+Device-specific drivers need no changes, but every transfer costs a copy, and the copy of the data
+the device returns runs in the transport's interrupt handler. See
+:kconfig:option:`CONFIG_VIRTIO_RESTRICTED_DMA_POOL`.
+
+The pool is handed to the device by its own address, so it must be identity mapped, which is the
+case without an MMU and on AArch64 for a ``zephyr,memory-region`` with a ``zephyr,memory-attr``
+property, and it is accessed through the cache like any other memory, so the device must be cache
+coherent with the CPU. Only the MMIO transport can reference a pool at present.
+
+The pool must be large enough to hold the rings of every virtqueue created in it and the buffers
+of all chains that have been added and not yet returned. If the pool is full, adding a chain fails
+immediately instead of waiting for space.
+
 Guest-side Virtio drivers
 *************************
 Currently Zephyr provides drivers for Virtio over PCI and Virtio over MMIO and drivers for three devices using virtio - virtiofs, used

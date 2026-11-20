@@ -1,0 +1,27 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <mem.h>
+
+/*
+ * Make the 64 KiB right below the board's framebuffer reservation the pool and
+ * end the kernel's RAM where the pool starts. The addresses follow from ram0 in
+ * dts/riscv/qemu/virt-riscv.dtsi and from ramfb_mem, the last 4 MiB of that
+ * RAM, in boards/qemu/riscv64/qemu_riscv64.dts.
+ */
+&ram0 {
+	reg = <0x80000000 (DT_SIZE_M(252) - DT_SIZE_K(64))>;
+};
+
+/ {
+	reserved-memory {
+		test_pool: restricted-dma-pool@8fbf0000 {
+			compatible = "restricted-dma-pool", "zephyr,memory-region";
+			reg = <0x8fbf0000 DT_SIZE_K(64)>;
+			zephyr,memory-region = "TEST_POOL";
+		};
+	};
+};

@@ -159,3 +159,12 @@ Other notable changes
 ..
   Any more descriptive subsystem or driver changes. Do you really want to write
   a paragraph or is it enough to link to the documentation of the change?
+
+* VirtIO
+
+  * A memory region declared as :dtcompatible:`restricted-dma-pool` and referenced by the
+    ``memory-region`` property of a :dtcompatible:`virtio,mmio` node confines the device to that
+    region: the virtqueues are allocated from it and the driver buffers are bounced through it
+    (:kconfig:option:`CONFIG_VIRTIO_RESTRICTED_DMA_POOL`). This lets a device implemented by
+    another virtual machine, which only maps the memory shared with it, be used without exposing
+    the rest of the guest's memory.

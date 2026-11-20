@@ -6,3 +6,14 @@ description: VIRTIO over MMIO
 compatible: "virtio,mmio"
 
 include: [base.yaml]
+
+properties:
+  memory-region:
+    type: phandle
+    description: |
+      restricted-dma-pool node with the memory the device is allowed to
+      access. When set, the virtqueues are allocated from that pool and the
+      buffers of the device drivers are bounced through it, so the device
+      never accesses any other memory. Use it when the device is implemented
+      by another virtual machine that only maps the memory shared with it.
+      Several devices may reference the same pool.
